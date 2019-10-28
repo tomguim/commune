@@ -31,60 +31,28 @@ class Agent():
             agents.update_one({"_id":self._id}, {"$inc":{"balance": (amount)}})
             print "Add Balance"
 
-class Resource():
-    def __init__(self, _id, aquantity):
-        #fix the thing assosiating the availability of a category (name variable) and the object id which denotes a specific object.
-        self._id = _id
-        self.aquantity = aquantity
-        resourceinit = {"_id": _id, "aquantity": aquantity}
+def new_resource(resource_id, aquantity):
+    #add another category of being_type_id
+    resourceinit = {"_id": resourceid, "aquantity": aquantity}
         resources.insert_one(resourceinit)
-        #Just for the sake of temporary simplicity should be changed to a random string later.
 
-    def set_owner(self, owner):
-        resources.update_one({"_id":self._id}, {"$set":{"owner": (owner)}})
-        self.refresh()
-        print "New owner of ", self._id, " is ", newowner
+def set_owner(resource_id, owner):
+        resources.update_one({"_id":resource_id}, {"$set":{"owner": (owner)}})
+        refresh(resource_id)
+        print "New owner of ", resource_id, " is ", newowner
     #problem with this logic
 
-    def set_holder(self, holder):
-        resources.update_one({"_id":self._id}, {"$set":{"holder": (holder)}})
-        self.refresh()
-        print "New holder of ", self._id, " is ", holder
+def set_holder(resource_id, holder):
+    resources.update_one({"_id":resource_id}, {"$set":{"holder": (holder)}})
+    refresh(resource_id)
+    print "New holder of ", resource_id, " is ", holder
 
-def inc_aquantity(resource_id, amount):
-    if amount == 0:
-        print "Invalid amount"
-    else:
-        resources.update_one({"_id": (resource_id)}, {"$inc":{"aquantity": (amount)}})
-        refresh(resource_id)
-        print "Inc Available Supply by ", amount
-
-def set_pquantity(resource_id, amount):
-    resources.update_one({"_id": (resource_id)}, {"$set":{"pquantity": (amount)}})
-    print "Set Physical Quantity to ", amount
-
-def inc_pquantity(resource_id, amount):
-    if amount == 0:
-        print "Invalid amount"
-    else:
-        resources.update_one({"_id":(resource_id)}, {"$inc":{"pquantity": (amount)}})
-        if amount > 0:
-            print "Add ", amount, " Physical Quantity"
-        else:
-            print "Remove", amount, " Physical Quantity"
-
-def set_aquantity(resource_id, amount):
-    resources.update_one({"_id":(resource_id)}, {"$set":{"aquantity": (amount)}})
-    try:
-        refresh(resource_id)
-    except:
-        print "error with refresh"
-    print "Set Available Supply to ", amount
 
 def refresh(resource_id):
+    #this will be tied to being_type_id
     #remember that availablesupply is a large category and doesnt mean available for the agent
     #fix the program so that the true availability is agent centric and based on whether they demanded or not.
-    x = resources.find_one({"_id": (resource_id)})
+    x = resources.find_one({"_id": resource_id})
     aquantity = x["aquantity"]
     try:
         drate = x["drate"]
@@ -106,6 +74,38 @@ def refresh(resource_id):
         price = float(usupply) / float(demand)
     resources.update_one({"_id": (resource_id)}, {"$set":{"price": (price)}})
 
+def set_aquantity(resource_id, amount):
+    #this will be tied to being_type_id, aquantity will be determined by adding all the object_IDs of a being type.
+    resources.update_one({"_id":(resource_id)}, {"$set":{"aquantity": (amount)}})
+    try:
+        refresh(resource_id)
+    except:
+        print "error with refresh"
+    print "Set Available Supply to ", amount
+
+def inc_aquantity(resource_id, amount):
+    #this will be tied to being_type_id
+    if amount == 0:
+        print "Invalid amount"
+    else:
+        resources.update_one({"_id": (resource_id)}, {"$inc":{"aquantity": (amount)}})
+        refresh(resource_id)
+        print "Inc Available Supply by ", amount
+
+def set_pquantity(resource_id, amount):
+    resources.update_one({"_id": (resource_id)}, {"$set":{"pquantity": (amount)}})
+    print "Set Physical Quantity to ", amount
+
+def inc_pquantity(resource_id, amount):
+    if amount == 0:
+        print "Invalid amount"
+    else:
+        resources.update_one({"_id":(resource_id)}, {"$inc":{"pquantity": (amount)}})
+        if amount > 0:
+            print "Add ", amount, " Physical Quantity"
+        else:
+            print "Remove", amount, " Physical Quantity"
+
 def set_drate(resource_id, amount):
     resources.update_one({"_id": (resource_id)}, {"$set":{"drate": (amount)}})
     try:
@@ -115,6 +115,7 @@ def set_drate(resource_id, amount):
     print "Average Deterioration Rate Changed to ", amount
 
 def set_demand(resource_id, amount):
+    #this will be tied to being_type_id
     resources.update_one({"_id":(resource_id)}, {"$set":{"demand": (amount)}})
     try:
         refresh(resource_id)
@@ -123,6 +124,7 @@ def set_demand(resource_id, amount):
     print "Set Demand to ", amount
 
 def take(agent_id, resource_id, quantity):
+    #this will take x quantity of being_type_id and will transfer holding of x quantity resource_ids of being_type_id
     refresh(resource_id)
     result = resources.find_one({"_id": (resource_id)})
     price = result["price"]
@@ -148,8 +150,9 @@ def give(agent_id, resource_id, quantity):
     print agent_id, " gave ", quantity, " of ", resource_id, " at ", price, "each"
         #figure out what do with set holder thing. Is this implied? 
 
-def inc_demand(resource_id, amount):
+def demand(resource_id, amount):
     #add support for the demands of agent_id
+    #this will be tied to being_type_id
     resources.update_one({"_id": (resource_id)}, {"$inc":{"demand": (amount)}})
     if amount > 0:
         print "Add ", amount, " Demand"
@@ -163,11 +166,12 @@ def inc_demand(resource_id, amount):
 
 def delete_resource(resource_id):
     resources.delete_one({"_id": (resource_id)})
+    #resource_id is the category
 
 tom = Agent("tom")
 tom.set_balance(100)
 
-Resource("apple", 50)
+new_resource("apple", 50)
 
 set_drate("apple", 0.5)
 set_demand("apple", 1000)
