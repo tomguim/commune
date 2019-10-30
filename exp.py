@@ -3,8 +3,9 @@ import pymongo
 from pymongo import MongoClient
 cluster = MongoClient()
 
-db = cluster["Resources"]
-resources = db["Resources"]
+db = cluster["Beings"]
+beings = db["Beings"]
+#Beings
 
 db = cluster["Agents"]
 agents = db["Agents"]
@@ -13,7 +14,7 @@ db = cluster["Objects"]
 objects = db["Objects"]
 
 #Temporary part of code
-resources.delete_many({})
+beings.delete_many({})
 agents.delete_many({})
 objects.delete_many({})
 
@@ -25,7 +26,6 @@ def init_agent(agent_id):
     agentinit = {"_id": agent_id}
     #the id will later be an object id, nothing needed to init
     agents.insert_one(agentinit)
-
 
 def set_balance(agent_id, amount):
     agents.update_one({"_id": agent_id}, {"$set":{"balance": amount}})
@@ -39,24 +39,27 @@ def inc_balance(agent_id, amount):
         print "Add Balance"
 
 # *********************************************
-# ***************** RESOURCES *****************
+# ***************** beings *****************
 # *********************************************
 
 # ********* DEALING WITH BEING_TYPE ***********
 
-def new_resource(being_type, physical_quantity, aquantity, owner, holder):
+def new_being(being_type, aquantity, owner, holder):
     #aquantity will be later determined post-init by adding a list of all objects.
-    resourceinit = {"_id": being_type, "aquantity": aquantity}
-    resources.insert_one(resourceinit)
+    beinginit = {"_id": being_type}
+    beings.insert_one(beinginit)
+    #the way we mean aquantity as it applies to beings is different from how we mean it as we apply it so objects?
     
-    #Do this physical_quantity times
-    objects.insert_one("being_type": being_type, "owner": owner, "holder": holder)
+    i = 0
+    while i < aquantity:
+        objects.insert_one({"being_type": being_type, "owner": owner, "holder": holder})
+        i += 1
 
 def refresh(being_type):
     #remember that availablesupply is a large category and doesnt mean available for the agent
     #fix the program so that the true availability is agent centric and based on whether they demanded or not.
-    x = resources.find_one({"_id": being_type})
-    aquantity = x["aquantity"]
+    x = beings.find_one({"_id": being_type})
+    aquantity = objects.find({"being_type": being_type, "owner": "commune"}).count()
     try:
         drate = x["drate"]
         demand = x["demand"]
@@ -70,47 +73,38 @@ def refresh(being_type):
             # Not catalogued an object but want to make it illegal to use if it is ever found (imagine evasive species which are not catalogued but interaction with them are regulated)
     else:
         usupply = (float(aquantity) / float(drate))
-    resources.update_one({"_id": being_type}, {"$set":{"usupply": usupply}})
+    beings.update_one({"_id": being_type}, {"$set":{"usupply": usupply}})
     if float(usupply) >= float(demand):
         price = 0
     else:
         price = float(usupply) / float(demand)
-    resources.update_one({"_id": being_type}, {"$set":{"price": price}})
+    beings.update_one({"_id": being_type}, {"$set":{"price": price}})
 
-def set_aquantity(being_type, amount):
-    resources.update_one({"_id":being_type}, {"$set":{"aquantity": amount}})
-    try:
-        refresh(being_type)
-    except:
-        print "error with refresh"
-    print "Set Available Supply to ", amount
-
-def inc_aquantity(being_type, amount):
-    #this will be tied to being_type_id
-    if amount == 0:
-        print "Invalid amount"
-    else:
-        resources.update_one({"_id": being_type}, {"$inc":{"aquantity": amount}})
-        refresh(being_type)
-        print "Inc Available Supply by ", amount
+def inc_object(being_type, amount, owner, holder):
+    i = 0
+    while i < amount:
+        objects.insert_one({"being_type": being_type, "owner": owner, "holder": holder})
+        i += 1
+    refresh(being_type)
+    print "Added ", amount, " ", being_type
 
 def set_pquantity(being_type, amount):
     #maybe pquantity should be based on the number of objects in the being_type.
-    resources.update_one({"_id": being_type}, {"$set":{"pquantity": amount}})
+    beings.update_one({"_id": being_type}, {"$set":{"pquantity": amount}})
     print "Set Physical Quantity to ", amount
 
 def inc_pquantity(being_type, amount):
     if amount == 0:
         print "Invalid amount"
     else:
-        resources.update_one({"_id": being_type)}, {"$inc":{"pquantity": amount}})
+        beings.update_one({"_id": being_type}, {"$inc":{"pquantity": amount}})
         if amount > 0:
             print "Add ", amount, " Physical Quantity"
         else:
             print "Remove", amount, " Physical Quantity"
 
 def set_drate(being_type, amount):
-    resources.update_one({"_id": being_type}, {"$set":{"drate": amount}})
+    beings.update_one({"_id": being_type}, {"$set":{"drate": amount}})
     try:
         refresh(being_type)
     except:
@@ -119,7 +113,7 @@ def set_drate(being_type, amount):
 
 def set_demand(being_type, amount):
     #this will be tied to being_type
-    resources.update_one({"_id": being_type}, {"$set":{"demand": amount}})
+    beings.update_one({"_id": being_type}, {"$set":{"demand": amount}})
     try:
         refresh(being_type)
     except:
@@ -129,14 +123,18 @@ def set_demand(being_type, amount):
 def take(agent_id, being_type, quantity):
     #this will take x quantity of being_type and will transfer holding of x quantity resource_ids of being_type
     refresh(being_type)
-    result = resources.find_one({"_id": being_type})
+    result = beings.find_one({"_id": being_type})
     price = result["price"]
     y = agents.find_one({"_id": agent_id})
     balance = y["balance"]
     if balance >= (price * quantity):
         agents.update_one({"_id": agent_id}, {"$inc":{"balance": (price * quantity)}})
-        resources.update_one({"_id": being_type}, {"$inc":{"aquantity": -1}})
-        resources.update_one({"_id": being_type}, {"$inc":{"uses": quantity}})
+        #fix this
+        beings.update_one({"_id": being_type}, {"$inc":{"uses": quantity}})
+        i = 0
+        while i < quantity:
+            objects.update_one({"being_type": being_type, "holder": "commune"}, {"$set":{"holder": agent_id}})
+            i += 1
         refresh(being_type)
         print agent_id, " took ", quantity, " of ", being_type, " at ", price, "each"
     else:
@@ -149,14 +147,18 @@ def give(agent_id, being_type, quantity):
       # y = agents.find_one({"_id": (agent_id)})
        #balance = y["balance"]
      #  agents.update_one({"_id": (agent_id)}, {"$inc":{"balance": (price * quantity)}})
-    resources.update_one({"_id": being_type}, {"$inc":{"aquantity": 1}})
-    print agent_id, " gave ", quantity, " of ", being_type, " at ", price, "each"
+    i = 0
+    while i < quantity:
+        objects.update_one({"being_type": being_type, "holder": agent_id}, {"$set":{"holder": "commune"}})
+        i += 1
+    #change quantity amount of objects with being_type and holder: "agent_id" to holder: "commune".
+    print agent_id, " gave ", quantity, " of ", being_type
         #figure out what do with set holder thing. Is this implied? 
 
 def demand(being_type, amount):
     #add support for the demands of agent_id
     #this will be tied to being_type
-    resources.update_one({"_id": being_type}, {"$inc":{"demand": amount}})
+    beings.update_one({"_id": being_type}, {"$inc":{"demand": amount}})
     if amount > 0:
         print "Add ", amount, " Demand"
     else:
@@ -170,36 +172,40 @@ def demand(being_type, amount):
 
 # ***************** DEALING WITH OBJECT_ID *****************
 
-
 def delete_resource(resource_id):
-    resources.delete_one({"_id": resource_id})
+    objects.delete_one({"_id": resource_id})
     #resource_id is the specific object.
 
 def set_owner(resource_id, owner):
-        resources.update_one({"_id": resource_id}, {"$set":{"owner": owner}})
+        beings.update_one({"_id": resource_id}, {"$set":{"owner": owner}})
         refresh(being_type)
         print "New owner of ", resource_id, " is ", newowner
     #problem with this logic
 
 def set_holder(resource_id, holder):
-    resources.update_one({"_id": resource_id}, {"$set":{"holder": holder}})
+    beings.update_one({"_id": resource_id}, {"$set":{"holder": holder}})
     refresh(being_type)
     print "New holder of ", resource_id, " is ", holder
+
 
 init_agent("tom")
 set_balance("tom", 100)
 
-new_resource("apple", 50)
+new_being("apple", 5, "commune", "commune")
 
 set_drate("apple", 0.5)
 set_demand("apple", 1000)
 
-take("tom", "apple", 10)
+take("tom", "apple", 2)
 
 agentsresults = agents.find({})
 for x in agentsresults:
     print(x)
 
-resourcesresults = resources.find({})
-for x in resourcesresults:
+beingsresults = beings.find({})
+for x in beingsresults:
+    print(x)
+
+objectsresults = objects.find({})
+for x in objectsresults:
     print(x)
