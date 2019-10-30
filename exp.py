@@ -10,12 +10,17 @@ beings = db["Beings"]
 db = cluster["Agents"]
 agents = db["Agents"]
 
+db = cluster["Demands"]
+demands = db["Demands"]
+
 db = cluster["Objects"]
 objects = db["Objects"]
 
 #Temporary part of code
 beings.delete_many({})
 agents.delete_many({})
+demands.delete_many({})
+#things r broken down into agent demands and commune demands (commune demamds will let us do token exchane value based on planning euro cost list)
 objects.delete_many({})
 
 # ******************************************
@@ -142,18 +147,18 @@ def take(agent_id, being_type, quantity):
         #figure out what do with set holder thing. Is this implied?
         #make sure quantity can not exceed usupply
 
-def give(agent_id, being_type, quantity):
+def give_to_commune(agent_id, receiver, being_type, quantity):
     #make sure he can only give a quantity which he himself has
       # y = agents.find_one({"_id": (agent_id)})
        #balance = y["balance"]
      #  agents.update_one({"_id": (agent_id)}, {"$inc":{"balance": (price * quantity)}})
     i = 0
     while i < quantity:
-        objects.update_one({"being_type": being_type, "holder": agent_id}, {"$set":{"holder": "commune"}})
+        objects.update_one({"being_type": being_type, "holder": agent_id}, {"$set":{"holder": receiver}})
         i += 1
     #change quantity amount of objects with being_type and holder: "agent_id" to holder: "commune".
     print agent_id, " gave ", quantity, " of ", being_type
-        #figure out what do with set holder thing. Is this implied? 
+        #figure out what do with set holder thing. Is this implied?
 
 def demand(being_type, amount):
     #add support for the demands of agent_id
@@ -197,6 +202,7 @@ set_drate("apple", 0.5)
 set_demand("apple", 1000)
 
 take("tom", "apple", 2)
+
 
 agentsresults = agents.find({})
 for x in agentsresults:
