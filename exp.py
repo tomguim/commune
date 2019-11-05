@@ -5,7 +5,6 @@ cluster = MongoClient()
 
 db = cluster["Beings"]
 beings = db["Beings"]
-#Beings
 
 db = cluster["Agents"]
 agents = db["Agents"]
@@ -64,10 +63,16 @@ def refresh(being_type):
     #remember that availablesupply is a large category and doesnt mean available for the agent
     #fix the program so that the true availability is agent centric and based on whether they demanded or not.
     x = beings.find_one({"_id": being_type})
+    #demand = sum of all amounts of all entries that have being_type = being_type
     aquantity = objects.find({"being_type": being_type, "owner": "commune"}).count()
+
+    #demand = demands.aggregate([{"$match": {"being_type": being_type}}, {"$group": {"_id": being_type, demand: {"$sum": "$amount"}}}])
     try:
         drate = x["drate"]
-        demand = x["demand"]
+        pipe = [{'$group': {'_id': being_type, 'total': {'$sum': '$amount'}}}]
+        results = demands.aggregate(pipeline=pipe)
+        for result in results:
+            demand = float(result['total'])
         uses = x["uses"]
         usupply = (float(aquantity) / float(drate)) - float(uses)
     except:
@@ -79,11 +84,14 @@ def refresh(being_type):
     else:
         usupply = (float(aquantity) / float(drate))
     beings.update_one({"_id": being_type}, {"$set":{"usupply": usupply}})
-    if float(usupply) >= float(demand):
-        price = 0
-    else:
-        price = float(usupply) / float(demand)
-    beings.update_one({"_id": being_type}, {"$set":{"price": price}})
+    try:
+        if float(usupply) >= float(demand):
+            price = 0
+        else:
+            price = float(usupply) / float(demand)
+        beings.update_one({"_id": being_type}, {"$set":{"price": price}})
+    except:
+        print "error usupply or demand not yet set"
 
 def inc_object(being_type, amount, owner, holder):
     i = 0
@@ -160,10 +168,11 @@ def give_to_commune(agent_id, receiver, being_type, quantity):
     print agent_id, " gave ", quantity, " of ", being_type
         #figure out what do with set holder thing. Is this implied?
 
-def demand(being_type, amount):
-    #add support for the demands of agent_id
-    #this will be tied to being_type
-    beings.update_one({"_id": being_type}, {"$inc":{"demand": amount}})
+def demand(agent_id, being_type, amount):
+    if demands.count({"being_type": being_type, "agent_id": agent_id}) > 0: 
+        demands.update_one({"being_type": being_type, "agent_id": agent_id}, {"$inc":{"amount": amount}})
+    else:
+        demands.insert_one({"being_type": being_type, "agent_id": agent_id, "amount": amount})
     if amount > 0:
         print "Add ", amount, " Demand"
     else:
@@ -172,8 +181,7 @@ def demand(being_type, amount):
         refresh(being_type)
     except:
         print "error"
-        #not yet included that the demand is also attributed to the self agent (for priority access)    
-
+    #now calculate demand in the same way we calculate aquantity but using other database.
 
 # ***************** DEALING WITH OBJECT_ID *****************
 
@@ -194,12 +202,18 @@ def set_holder(resource_id, holder):
 
 
 init_agent("tom")
+init_agent("luc")
 set_balance("tom", 100)
+set_balance("luc", 100)
 
 new_being("apple", 5, "commune", "commune")
+new_being("bannana", 10, "commune", "tom")
 
 set_drate("apple", 0.5)
 set_demand("apple", 1000)
+demand("tom", "apple", 30)
+demand("luc", "apple", 60)
+
 
 take("tom", "apple", 2)
 
@@ -214,4 +228,8 @@ for x in beingsresults:
 
 objectsresults = objects.find({})
 for x in objectsresults:
+    print(x)
+
+demandsresults = demands.find({})
+for x in demandsresults:
     print(x)
