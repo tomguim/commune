@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import pymongo
 from pymongo import MongoClient
+
 cluster = MongoClient()
 
 db = cluster["Beings"]
@@ -15,12 +16,29 @@ demands = db["Demands"]
 db = cluster["Objects"]
 objects = db["Objects"]
 
+db = cluster["Transactions"]
+transactions = db["Transactions"]
+#log
+
+db = cluster["Tasks"]
+tasks = db["Tasks"]
+#100% consensus to make an entry? (do we add quantity for tasks?) Tasks determined by commune
+
+db = cluster["Forex_Prices"]
+forex = db["Forex_Prices"]
+# being_id and price in various currencies. Set by commune Maybe determined by market in the same way as the drate.
+
 #Temporary part of code
 beings.delete_many({})
 agents.delete_many({})
 demands.delete_many({})
 #things r broken down into agent demands and commune demands (commune demamds will let us do token exchane value based on planning euro cost list)
 objects.delete_many({})
+transactions.delete_many({})
+tasks.delete_many({})
+forex.delete_many({})
+
+
 
 # ******************************************
 # ***************** AGENTS *****************
@@ -43,15 +61,13 @@ def inc_balance(agent_id, amount):
         print "Add Balance"
 
 # *********************************************
-# ***************** beings *****************
-# *********************************************
-
 # ********* DEALING WITH BEING_TYPE ***********
+# *********************************************
 
 def new_being(being_type, aquantity, owner, holder):
     #aquantity will be later determined post-init by adding a list of all objects.
-    beinginit = {"_id": being_type}
-    beings.insert_one(beinginit)
+    beings.insert_one({"_id": being_type})
+    beings.update_one({"_id": being_type}, {"$set":{"uses": 0}})
     #the way we mean aquantity as it applies to beings is different from how we mean it as we apply it so objects?
     
     i = 0
@@ -63,10 +79,8 @@ def refresh(being_type):
     #remember that availablesupply is a large category and doesnt mean available for the agent
     #fix the program so that the true availability is agent centric and based on whether they demanded or not.
     x = beings.find_one({"_id": being_type})
-    #demand = sum of all amounts of all entries that have being_type = being_type
     aquantity = objects.find({"being_type": being_type, "owner": "commune"}).count()
-
-    #demand = demands.aggregate([{"$match": {"being_type": being_type}}, {"$group": {"_id": being_type, demand: {"$sum": "$amount"}}}])
+    #might create a negative number: this should trigger unavailability of the being (or objects?) to agents
     try:
         drate = x["drate"]
         pipe = [{'$group': {'_id': being_type, 'total': {'$sum': '$amount'}}}]
@@ -74,16 +88,11 @@ def refresh(being_type):
         for result in results:
             demand = float(result['total'])
         uses = x["uses"]
-        usupply = (float(aquantity) / float(drate)) - float(uses)
+        usupply = ((float(aquantity) / float(drate)) - float(uses))
     except:
         print "error fetching requirements for refresh"
-    if aquantity == 0:
-        usupply = 0
             # Used when you want to catalogue an object but declare it as not usable by the public (imagine protecting a tree), or if you have
             # Not catalogued an object but want to make it illegal to use if it is ever found (imagine evasive species which are not catalogued but interaction with them are regulated)
-    else:
-        usupply = (float(aquantity) / float(drate))
-    beings.update_one({"_id": being_type}, {"$set":{"usupply": usupply}})
     try:
         if float(usupply) >= float(demand):
             price = 0
@@ -124,25 +133,17 @@ def set_drate(being_type, amount):
         print "error with refresh"
     print "Average Deterioration Rate Changed to ", amount
 
-def set_demand(being_type, amount):
-    #this will be tied to being_type
-    beings.update_one({"_id": being_type}, {"$set":{"demand": amount}})
-    try:
-        refresh(being_type)
-    except:
-        print "error with refresh"
-    print "Set Demand to ", amount
-
 def take(agent_id, being_type, quantity):
-    #this will take x quantity of being_type and will transfer holding of x quantity resource_ids of being_type
     refresh(being_type)
     result = beings.find_one({"_id": being_type})
     price = result["price"]
+    asupply = objects.find({"being_type": being_type, "owner": "commune"}).count() - demands.find({"being_type": being_type, "demander": "commune"}).count()
     y = agents.find_one({"_id": agent_id})
     balance = y["balance"]
-    if balance >= (price * quantity):
-        agents.update_one({"_id": agent_id}, {"$inc":{"balance": (price * quantity)}})
-        #fix this
+    if (balance >= (price * quantity)) and (asupply >= quantity):
+        #I think there is a problem with the "and"
+        #right now this is usupply >= than quantity but this will change when we make it agent demand specific
+        agents.update_one({"_id": agent_id}, {"$inc":{"balance": (price * quantity*(-1))}})
         beings.update_one({"_id": being_type}, {"$inc":{"uses": quantity}})
         i = 0
         while i < quantity:
@@ -151,28 +152,32 @@ def take(agent_id, being_type, quantity):
         refresh(being_type)
         print agent_id, " took ", quantity, " of ", being_type, " at ", price, "each"
     else:
-        print "Insufficient funds for purchase"
+        print "Insufficient funds or asupply for taking"
         #figure out what do with set holder thing. Is this implied?
-        #make sure quantity can not exceed usupply
+        #make it so that the take function can transfer to anyone.
 
-def give_to_commune(agent_id, receiver, being_type, quantity):
+def give(agent_id, receiver, being_type, quantity):
+    personal_supply = objects.find({"being_type": being_type, "holder": agent_id}).count()
+    if personalsupply >= quantity:
     #make sure he can only give a quantity which he himself has
       # y = agents.find_one({"_id": (agent_id)})
        #balance = y["balance"]
      #  agents.update_one({"_id": (agent_id)}, {"$inc":{"balance": (price * quantity)}})
-    i = 0
-    while i < quantity:
-        objects.update_one({"being_type": being_type, "holder": agent_id}, {"$set":{"holder": receiver}})
-        i += 1
-    #change quantity amount of objects with being_type and holder: "agent_id" to holder: "commune".
-    print agent_id, " gave ", quantity, " of ", being_type
-        #figure out what do with set holder thing. Is this implied?
-
-def demand(agent_id, being_type, amount):
-    if demands.count({"being_type": being_type, "agent_id": agent_id}) > 0: 
-        demands.update_one({"being_type": being_type, "agent_id": agent_id}, {"$inc":{"amount": amount}})
+        i = 0
+        while i < quantity:
+            objects.update_one({"being_type": being_type, "holder": agent_id}, {"$set":{"holder": receiver}})
+            i += 1
+        #change quantity amount of objects with being_type and holder: "agent_id" to holder: "commune".
+        print agent_id, " gave ", quantity, " of ", being_type, " to ", receiver
     else:
-        demands.insert_one({"being_type": being_type, "agent_id": agent_id, "amount": amount})
+        print "agent has insufficient supply to give."
+
+def demand(demander, being_type, amount):
+    # demander can be either commune or agent
+    if demands.count({"being_type": being_type, "demander": demander}) > 0: 
+        demands.update_one({"being_type": being_type, "demander": demander}, {"$inc":{"amount": amount}})
+    else:
+        demands.insert_one({"being_type": being_type, "demander": demander, "amount": amount})
     if amount > 0:
         print "Add ", amount, " Demand"
     else:
@@ -181,11 +186,12 @@ def demand(agent_id, being_type, amount):
         refresh(being_type)
     except:
         print "error"
-    #now calculate demand in the same way we calculate aquantity but using other database.
 
+# **********************************************************
 # ***************** DEALING WITH OBJECT_ID *****************
+# **********************************************************
 
-def delete_resource(resource_id):
+def delete_object(resource_id):
     objects.delete_one({"_id": resource_id})
     #resource_id is the specific object.
 
@@ -201,35 +207,53 @@ def set_holder(resource_id, holder):
     print "New holder of ", resource_id, " is ", holder
 
 
+# ***************** DEALING WITH FOREX *****************
+def set_forex_price(being_type, currency, amount):
+    forex.insert_one({"_id": being_type})
+    forex.update_one({"_id": being_type}, {"$set":{"amount": amount, "currency": currency}})
+
 init_agent("tom")
 init_agent("luc")
 set_balance("tom", 100)
 set_balance("luc", 100)
 
-new_being("apple", 5, "commune", "commune")
-new_being("bannana", 10, "commune", "tom")
+new_being("apple", 2, "commune", "commune")
+set_forex_price("apple", "euros", 5)
 
 set_drate("apple", 0.5)
-set_demand("apple", 1000)
-demand("tom", "apple", 30)
-demand("luc", "apple", 60)
-
+demand("tom", "apple", 3)
+demand("luc", "apple", 3)
+demand("commune", "apple", 2)
 
 take("tom", "apple", 2)
+take("luc", "apple", 1)
 
-
+print " "
+print "----------- AGENTS -----------"
 agentsresults = agents.find({})
 for x in agentsresults:
     print(x)
 
+print " "
+print "----------- BEINGS -----------"
 beingsresults = beings.find({})
 for x in beingsresults:
     print(x)
 
+print " "
+print "----------- OBJECTS -----------"
 objectsresults = objects.find({})
 for x in objectsresults:
     print(x)
 
+print " "
+print "----------- DEMANDS -----------"
 demandsresults = demands.find({})
 for x in demandsresults:
+    print(x)
+
+print " "
+print "--------- FOREX PRICES --------"
+forexresults = forex.find({})
+for x in forexresults:
     print(x)
